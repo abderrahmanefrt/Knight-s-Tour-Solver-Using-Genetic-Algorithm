@@ -2,8 +2,7 @@ import random
 
 
 class Chromosome:
-   
-   
+   genes= []
    def __init__(self, genes):
        if genes is None:
            genes= random.sample(range(64),64)

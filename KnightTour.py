@@ -1,12 +1,9 @@
 import random
+import pygame
+import sys
 
-# -------------------------
-# Chromosome
-# -------------------------
+
 class Chromosome:
-    """
-    Chromosome : liste de 63 gènes (valeurs 1..8 représentant les 8 mouvements du cavalier)
-    """
     LENGTH = 63
 
     def __init__(self, genes=None):
@@ -15,42 +12,25 @@ class Chromosome:
         else:
             if len(genes) != self.LENGTH:
                 raise ValueError(f"Genes length must be {self.LENGTH}")
-            self.genes = genes
+            self.genes = genes[:]
 
     def crossover(self, partner, crossover_prob=1.0):
-        """
-        Single-point crossover (conforme au cours).
-        Si probabilité de crossover < random, on retourne des copies des parents.
-        Retourne deux Chromosome (enfants).
-        """
-        if random.random() > crossover_prob:
-            return Chromosome(self.genes[:]), Chromosome(partner.genes[:])
-
-        point = random.randint(1, self.LENGTH - 1)
-        child1_genes = self.genes[:point] + partner.genes[point:]
-        child2_genes = partner.genes[:point] + self.genes[point:]
-        return Chromosome(child1_genes), Chromosome(child2_genes)
+        if random.random() <= crossover_prob:
+            crossover_point = random.randint(1, self.LENGTH - 1)
+            offspring1_genes = self.genes[:crossover_point] + partner.genes[crossover_point:]
+            offspring2_genes = partner.genes[:crossover_point] + self.genes[crossover_point:]
+            return Chromosome(offspring1_genes), Chromosome(offspring2_genes)
+        else:
+            return Chromosome(self.genes), Chromosome(partner.genes)
 
     def mutation(self, mutation_prob=0.01):
-        """
-        Flip mutation : chaque gène a une chance mutation_prob d'être remplacé
-        par une valeur aléatoire dans 1..8 (conforme au cours).
-        """
         for i in range(len(self.genes)):
-            if random.random() < mutation_prob:
+            if random.random() <= mutation_prob:
                 self.genes[i] = random.randint(1, 8)
 
 
-# -------------------------
 # Knight
-# -------------------------
 class Knight:
-    """
-    Représente un individu : position courante, chromosome (séquence de mouvements),
-    path (positions successives), fitness (nombre de cases valides visitées).
-    """
-
-    # mapping directions -> (dx, dy)
     MOVES = {
         1: (1, -2),
         2: (2, -1),
@@ -66,7 +46,6 @@ class Knight:
         if chromosome is None:
             self.chromosome = Chromosome()
         else:
-            # Accept either Chromosome instance or raw genes list
             if isinstance(chromosome, Chromosome):
                 self.chromosome = chromosome
             else:
@@ -77,7 +56,6 @@ class Knight:
         self.fitness = 0
 
     def move_forward(self, direction):
-        """Applique le déplacement direction et ajoute la nouvelle position à path."""
         x, y = self.position
         dx, dy = Knight.MOVES.get(direction, (0, 0))
         new_pos = (x + dx, y + dy)
@@ -85,59 +63,35 @@ class Knight:
         self.path.append(new_pos)
 
     def move_backward(self, direction):
-        """
-        Annule le dernier déplacement correspondant à 'direction'.
-        On suppose qu'on annule immédiatement le dernier append fait par move_forward.
-        """
-        # Revenir à la position précédente (si possible)
         if len(self.path) > 1:
-            # retirer la dernière position
             self.path.pop()
-            # mettre à jour position sur l'avant-dernière
             self.position = self.path[-1]
         else:
-            # Si on est au début, on reste à (0,0)
             self.position = (0, 0)
             self.path = [self.position]
 
     def check_moves(self):
-        """
-        Parcourt chaque gène et tente d'appliquer le mouvement.
-        Si le mouvement est illégal (hors échiquier ou case déjà visitée),
-        on annule et on tente les autres mouvements dans l'ordre cyclique
-        (forward ou backward), la direction de cycle est choisie aléatoirement
-        et reste la même pour tout le chromosome.
-        Si aucun mouvement valide n'est trouvé, on garde le dernier mouvement
-        (comme demandé dans l'énoncé) — cela peut produire une position
-        invalide qui sera ensuite comptée par evaluate_fitness.
-        """
-        # reset position and path
         self.position = (0, 0)
         self.path = [self.position]
-
-        cycle_forward = random.choice([True, False])  # choisi une fois par chromosome
+        cycle_forward = random.choice([True, False])
 
         for gene in self.chromosome.genes:
             original_move = gene
             move_found = False
 
-            # Essayer le mouvement original
+            # try original
             self.move_forward(original_move)
             x, y = self.position
 
-            # Vérifier validité : bord et non-visité (excluant la dernière position ajoutée)
             if 0 <= x < 8 and 0 <= y < 8 and self.position not in self.path[:-1]:
                 move_found = True
             else:
-                # annuler le mouvement invalide
                 self.move_backward(original_move)
 
-                # tester les 7 autres mouvements selon le cycle
                 for i in range(1, 8):
                     if cycle_forward:
                         new_move = ((original_move + i - 1) % 8) + 1
                     else:
-                        # cycle backward
                         new_move = ((original_move - i - 1) % 8) + 1
 
                     self.move_forward(new_move)
@@ -147,29 +101,19 @@ class Knight:
                         move_found = True
                         break
                     else:
-                        # annuler et continuer
                         self.move_backward(new_move)
 
-                # Si aucun mouvement valide n'est trouvé, garder le dernier mouvement original
                 if not move_found:
-                    # On applique le mouvement original (même s'il est invalide)
                     self.move_forward(original_move)
 
     def evaluate_fitness(self):
-        """
-        Parcourt la liste self.path et compte le nombre de positions valides successives
-        (à partir de la première) jusqu'à rencontrer une position invalide
-        (hors échiquier ou déjà visitée). La fitness maximale est 64.
-        """
         seen = set()
         fitness = 0
 
         for pos in self.path:
             x, y = pos
-            # vérifier bord
             if not (0 <= x < 8 and 0 <= y < 8):
                 break
-            # vérifier répétition
             if pos in seen:
                 break
             seen.add(pos)
@@ -185,132 +129,230 @@ class Knight:
 # Population
 # -------------------------
 class Population:
-    """
-    Population contenant N knights. Fournit les méthodes demandées dans l'énoncé.
-    """
-
-    def __init__(self, population_size, mutation_prob=0.01, tournament_size=3):
+    def __init__(self, population_size, mutation_prob=0.001, tournament_size=3, crossover_prob=1.0):
         self.population_size = population_size
         self.mutation_prob = mutation_prob
         self.tournament_size = tournament_size
+        self.crossover_prob = crossover_prob
         self.generation = 1
         self.knights = [Knight() for _ in range(population_size)]
-
-        # Évaluer initialement (on peut laisser la check_population() faire la correction d'abord)
-        for k in self.knights:
-            # Par défaut on ne corrige pas automatiquement; l'appel check_population() le fera.
-            k.evaluate_fitness()
+        for knight in self.knights:
+            knight.evaluate_fitness()
 
     def check_population(self):
-        """Pour chaque chevalier, vérifier et corriger ses mouvements."""
         for knight in self.knights:
             knight.check_moves()
 
     def evaluate(self):
-        """
-        Évalue la fitness de tous les individus et retourne (max_fitness, best_knight).
-        """
-        best = None
-        max_fit = -1
+        best_knight = None
+        max_fitness = -1
         for knight in self.knights:
             fit = knight.evaluate_fitness()
-            if fit > max_fit:
-                max_fit = fit
-                best = knight
-        return max_fit, best
+            if fit > max_fitness:
+                max_fitness = fit
+                best_knight = knight
+        return max_fitness, best_knight
 
     def tournament_selection(self, size=None):
-        """
-        Sélection par tournoi : on échantillonne 'size' individus aléatoirement
-        et on renvoie les deux meilleurs d'entre eux.
-        """
         if size is None:
             size = self.tournament_size
         sample = random.sample(self.knights, size)
         sample.sort(key=lambda k: k.fitness, reverse=True)
-        # retourner parent1, parent2
         return sample[0], sample[1]
 
-    def create_new_generation(self, crossover_prob=1.0):
-        """
-        Crée une nouvelle génération en respectant :
-        - sélection par tournoi (taille self.tournament_size)
-        - crossover single-point (probabilité crossover_prob)
-        - mutation (self.mutation_prob)
-        Remplace complètement la population (génération complète).
-        """
-        new_knights = []
-
-        while len(new_knights) < self.population_size:
+    def create_new_generation(self):
+        new_population = []
+        while len(new_population) < self.population_size:
             parent1, parent2 = self.tournament_selection()
-            # crossover retourne deux Chromosome
-            child_chrom1, child_chrom2 = parent1.chromosome.crossover(parent2.chromosome, crossover_prob)
-
-            # mutation
-            child_chrom1.mutation(self.mutation_prob)
-            child_chrom2.mutation(self.mutation_prob)
-
-            # créer Knight à partir des Chromosome
-            k1 = Knight(child_chrom1)
-            k2 = Knight(child_chrom2)
-
-            # ajouter à la nouvelle population
-            new_knights.append(k1)
-            if len(new_knights) < self.population_size:
-                new_knights.append(k2)
-
-        self.knights = new_knights
+            offspring_chrom1, offspring_chrom2 = parent1.chromosome.crossover(
+                partner=parent2.chromosome,
+                crossover_prob=self.crossover_prob
+            )
+            offspring_chrom1.mutation(self.mutation_prob)
+            offspring_chrom2.mutation(self.mutation_prob)
+            knight1 = Knight(offspring_chrom1)
+            knight2 = Knight(offspring_chrom2)
+            new_population.append(knight1)
+            if len(new_population) < self.population_size:
+                new_population.append(knight2)
+        self.knights = new_population
         self.generation += 1
 
 
+
+def visualize_with_pygame(knight, title="Knight's Tour - GA solution (green & white)", square_px=80, animate=True, delay_ms=150):
+    
+    pygame.init()
+    board_px = square_px * 8
+    screen = pygame.display.set_mode((board_px, board_px))
+    pygame.display.set_caption(title)
+
+    # Colors (green & white)
+    WHITE = (255, 255, 255)
+    GREEN = (34, 139, 34)        # forest green
+    LIGHT_GREEN = (144, 238, 144)  # pale green for highlight (optional)
+    LINE_COLOR = (0, 0, 0)
+    PATH_COLOR = (200, 30, 30)   # path line color (red-ish for contrast)
+    START_COLOR = (0, 0, 255)
+    END_COLOR = (255, 165, 0)
+
+    font = pygame.font.SysFont("Arial", int(square_px * 0.28))
+
+    path = knight.path  # list of (x,y)
+    # If path contains invalid positions outside board, clamp display to valid subset:
+    display_positions = []
+    for pos in path:
+        x, y = pos
+        if 0 <= x < 8 and 0 <= y < 8:
+            display_positions.append(pos)
+        else:
+            break
+
+    clock = pygame.time.Clock()
+    running = True
+    step = 0
+    total_steps = len(display_positions)
+
+    # Precompute centers
+    def center_of(cell):
+        x, y = cell
+        cx = x * square_px + square_px // 2
+        cy = y * square_px + square_px // 2
+        return cx, cy
+
+    # Main loop: animate until finished, then wait for close
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+                break
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    running = False
+                    break
+
+        # draw board (green & white)
+        for row in range(8):
+            for col in range(8):
+                # alternate colors; top-left (0,0) will be GREEN if (row+col)%2==0
+                color = GREEN if ((row + col) % 2 == 0) else WHITE
+                rect = pygame.Rect(col * square_px, row * square_px, square_px, square_px)
+                pygame.draw.rect(screen, color, rect)
+
+        # draw grid lines
+        for i in range(9):
+            pygame.draw.line(screen, LINE_COLOR, (i * square_px, 0), (i * square_px, board_px))
+            pygame.draw.line(screen, LINE_COLOR, (0, i * square_px), (board_px, i * square_px))
+
+        # Draw path up to current step
+        if total_steps > 0:
+            current_n = step if animate else total_steps
+            if current_n == 0:
+                current_n = 1
+            pts = []
+            for i in range(min(current_n, total_steps)):
+                x, y = display_positions[i]
+                # draw small circle/marker
+                cx, cy = center_of((x, y))
+                pts.append((cx, cy))
+
+                # draw numbered circle
+                radius = int(square_px * 0.28)
+                pygame.draw.circle(screen, WHITE, (cx, cy), radius)
+                txt = font.render(str(i + 1), True, (0, 0, 0))
+                txt_rect = txt.get_rect(center=(cx, cy))
+                screen.blit(txt, txt_rect)
+
+            # draw connecting lines
+            if len(pts) >= 2:
+                pygame.draw.lines(screen, PATH_COLOR, False, pts, max(2, square_px // 20))
+
+            # highlight start and end if available
+            sx, sy = display_positions[0]
+            ex, ey = display_positions[min(current_n, total_steps) - 1]
+            scx, scy = center_of((sx, sy))
+            ecx, ecy = center_of((ex, ey))
+            pygame.draw.circle(screen, START_COLOR, (scx, scy), max(6, square_px // 12))
+            pygame.draw.circle(screen, END_COLOR, (ecx, ecy), max(6, square_px // 12))
+
+        pygame.display.flip()
+
+        if animate:
+            # advance step until end, then stop incrementing
+            if step < total_steps:
+                step += 1
+                pygame.time.wait(delay_ms)
+            else:
+                # finished animation; wait for user to close window
+                clock.tick(30)
+        else:
+            # static display
+            clock.tick(30)
+
+    pygame.quit()
+
+
 # -------------------------
-# MAIN (console-only)
+# MAIN GA + visualization
 # -------------------------
-def main():
-    random.seed()  # tu peux fixer une seed pour reproductibilité : ex random.seed(42)
+def run_genetic_and_visualize(
+    population_size=50,
+    mutation_prob=0.001,
+    tournament_size=3,
+    crossover_prob=1.0,
+    max_generations=1000,
+    animate=True
+):
+    population = Population(
+        population_size=population_size,
+        mutation_prob=mutation_prob,
+        tournament_size=tournament_size,
+        crossover_prob=crossover_prob
+    )
 
-    population_size = 50
-    mutation_prob = 0.01
-    tournament_size = 3
-    max_generations = 1000
+    print("=" * 70)
+    print("Algorithme Génétique pour le Knight's Tour")
+    print("=" * 70)
+    print(f"Population size       : {population_size}")
+    print(f"Mutation probability  : {mutation_prob}")
+    print(f"Crossover probability : {crossover_prob}")
+    print(f"Tournament size       : {tournament_size}")
+    print(f"Max generations       : {max_generations}")
+    print("=" * 70)
+    print()
 
-    population = Population(population_size, mutation_prob, tournament_size)
-
-    print("Démarrage de l'algorithme génétique pour le Knight's Tour (console-only)")
-    print("Population size:", population_size)
-    print("Mutation prob:", mutation_prob)
-    print("Tournament size:", tournament_size)
-    print("-------------------------------------------")
-
+    best_solution = None
     while True:
-        # Correction des chromosomes (check_moves)
         population.check_population()
-
-        # Évaluation
         maxFit, bestSolution = population.evaluate()
-        print(f"Generation {population.generation} | Best Fitness = {maxFit}")
+        best_solution = bestSolution
+        print(f"Generation {population.generation:4d} | Best Fitness = {maxFit:2d}/64")
 
-        # Condition de réussite
         if maxFit == 64:
-            print(f"\nSolution trouvée en génération {population.generation} !")
+            print("\nSOLUTION TROUVÉE !")
             break
 
-        # Condition d'arrêt pour éviter boucle infinie
         if population.generation >= max_generations:
-            print(f"\nArrêt après {population.generation} générations. Meilleur fitness obtenu: {maxFit}")
+            print("\nNombre max de générations atteint.")
             break
 
-        # Génération suivante
         population.create_new_generation()
 
-    # Affichage résumé final (console)
-    best = bestSolution
-    print("\n--- Résumé ---")
-    print("Best fitness:", best.fitness)
-    print("Path length:", len(best.path))
-    print("Path (positions):", best.path)
-    print("Genes:", best.chromosome.genes)
+    print()
+    print(f"Fitness finale: {best_solution.fitness}/64")
+    print(f"Longueur du path: {len(best_solution.path)}")
+    print(f"Genes (extrait 20 premiers): {best_solution.chromosome.genes[:20]}")
+    print()
+
+    visualize_with_pygame(best_solution, animate=animate)
 
 
 if __name__ == "__main__":
-    main()
+    run_genetic_and_visualize(
+        population_size=50,
+        mutation_prob=0.001,
+        tournament_size=3,
+        crossover_prob=1.0,
+        max_generations=1000,
+        animate=True
+    )

@@ -1,7 +1,7 @@
 import random
 import pygame
 import sys
-
+import time
 
 class Chromosome:
     LENGTH = 63
@@ -38,7 +38,7 @@ class Knight:
         4: (1, 2),
         5: (-1, 2),
         6: (-2, 1),
-        7: (-2, -1),
+        7: (-2, -1),  
         8: (-1, -2),
     }
 
@@ -180,121 +180,110 @@ class Population:
 
 
 
-def visualize_with_pygame(knight, title="Knight's Tour - GA solution (green & white)", square_px=80, animate=True, delay_ms=150):
-    
+def visualize_with_pygame(knight, fitness, generation, title="Knight's Tour - GA (green & white)", square_px=80):
     pygame.init()
+
     board_px = square_px * 8
-    screen = pygame.display.set_mode((board_px, board_px))
+    STATS_HEIGHT = 130
+    window_height = board_px + STATS_HEIGHT
+
+    screen = pygame.display.set_mode((board_px, window_height))
     pygame.display.set_caption(title)
 
-    # Colors (green & white)
+    # Couleurs
     WHITE = (255, 255, 255)
-    GREEN = (34, 139, 34)        # forest green
-    LIGHT_GREEN = (144, 238, 144)  # pale green for highlight (optional)
-    LINE_COLOR = (0, 0, 0)
-    PATH_COLOR = (200, 30, 30)   # path line color (red-ish for contrast)
-    START_COLOR = (0, 0, 255)
-    END_COLOR = (255, 165, 0)
+    GREEN = (34, 139, 34)
+    BLACK = (0, 0, 0)
+    RED = (200, 30, 30)
+    GREY = (210, 210, 210)
 
-    font = pygame.font.SysFont("Arial", int(square_px * 0.28))
+    font = pygame.font.SysFont("Arial", 24)
+    big_font = pygame.font.SysFont("Arial", 32)
 
-    path = knight.path  # list of (x,y)
-    # If path contains invalid positions outside board, clamp display to valid subset:
-    display_positions = []
-    for pos in path:
-        x, y = pos
-        if 0 <= x < 8 and 0 <= y < 8:
-            display_positions.append(pos)
-        else:
-            break
+    path = knight.path
+    display_positions = [(x, y) for (x, y) in path if 0 <= x < 8 and 0 <= y < 8]
 
-    clock = pygame.time.Clock()
-    running = True
-    step = 0
-    total_steps = len(display_positions)
-
-    # Precompute centers
     def center_of(cell):
         x, y = cell
-        cx = x * square_px + square_px // 2
-        cy = y * square_px + square_px // 2
-        return cx, cy
+        return x * square_px + square_px // 2, y * square_px + square_px // 2
 
-    # Main loop: animate until finished, then wait for close
+    # Animation variables
+    step = 0
+    paused = False
+    running = True
+
+    clock = pygame.time.Clock()
+
+
+    speed_delay = 200 
+
     while running:
+        screen.fill((230, 230, 230))
+
+        # Gestion des événements
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-                break
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    running = False
-                    break
 
-        # draw board (green & white)
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                mx, my = pygame.mouse.get_pos()
+
+                # Clique sur le bouton Pause/Play
+                if board_px - 180 <= mx <= board_px - 40 and board_px + 20 <= my <= board_px + 80:
+                    paused = not paused
+
+        # Dessin du plateau
         for row in range(8):
             for col in range(8):
-                # alternate colors; top-left (0,0) will be GREEN if (row+col)%2==0
-                color = GREEN if ((row + col) % 2 == 0) else WHITE
-                rect = pygame.Rect(col * square_px, row * square_px, square_px, square_px)
-                pygame.draw.rect(screen, color, rect)
+                color = GREEN if (row + col) % 2 == 0 else WHITE
+                pygame.draw.rect(screen, color, (col * square_px, row * square_px, square_px, square_px))
 
-        # draw grid lines
-        for i in range(9):
-            pygame.draw.line(screen, LINE_COLOR, (i * square_px, 0), (i * square_px, board_px))
-            pygame.draw.line(screen, LINE_COLOR, (0, i * square_px), (board_px, i * square_px))
+        # Animation du chemin
+        if not paused and step < len(display_positions):
+            step += 1
+            pygame.time.delay(speed_delay)
 
-        # Draw path up to current step
-        if total_steps > 0:
-            current_n = step if animate else total_steps
-            if current_n == 0:
-                current_n = 1
-            pts = []
-            for i in range(min(current_n, total_steps)):
-                x, y = display_positions[i]
-                # draw small circle/marker
-                cx, cy = center_of((x, y))
-                pts.append((cx, cy))
+        # Dessiner le chemin
+        points = []
+        for i in range(step):
+            x, y = display_positions[i]
+            cx, cy = center_of((x, y))
+            points.append((cx, cy))
 
-                # draw numbered circle
-                radius = int(square_px * 0.28)
-                pygame.draw.circle(screen, WHITE, (cx, cy), radius)
-                txt = font.render(str(i + 1), True, (0, 0, 0))
-                txt_rect = txt.get_rect(center=(cx, cy))
-                screen.blit(txt, txt_rect)
+            # cercle + numéro
+            pygame.draw.circle(screen, WHITE, (cx, cy), square_px // 4)
+            num = font.render(str(i + 1), True, BLACK)
+            screen.blit(num, num.get_rect(center=(cx, cy)))
 
-            # draw connecting lines
-            if len(pts) >= 2:
-                pygame.draw.lines(screen, PATH_COLOR, False, pts, max(2, square_px // 20))
+        if len(points) >= 2:
+            pygame.draw.lines(screen, RED, False, points, 3)
 
-            # highlight start and end if available
-            sx, sy = display_positions[0]
-            ex, ey = display_positions[min(current_n, total_steps) - 1]
-            scx, scy = center_of((sx, sy))
-            ecx, ecy = center_of((ex, ey))
-            pygame.draw.circle(screen, START_COLOR, (scx, scy), max(6, square_px // 12))
-            pygame.draw.circle(screen, END_COLOR, (ecx, ecy), max(6, square_px // 12))
+        # --------------------------
+        # Zone Statistiques Graphiques
+        # --------------------------
+        pygame.draw.rect(screen, WHITE, (0, board_px, board_px, STATS_HEIGHT))
+
+
+        txt1 = font.render(f"Fitness : {fitness}/64", True, BLACK)
+        txt2 = font.render(f"Génération : {generation}", True, BLACK)
+
+        screen.blit(txt1, (20, board_px + 10))
+        screen.blit(txt2, (20, board_px + 45))
+
+        # Bouton Pause/Play
+        pygame.draw.rect(screen, GREY, (board_px - 180, board_px + 20, 140, 60))
+        label = "⏸ Pause" if not paused else "▶ Play"
+        btn_txt = big_font.render(label, True, RED)
+        screen.blit(btn_txt, (board_px - 170, board_px + 25))
 
         pygame.display.flip()
-
-        if animate:
-            # advance step until end, then stop incrementing
-            if step < total_steps:
-                step += 1
-                pygame.time.wait(delay_ms)
-            else:
-                # finished animation; wait for user to close window
-                clock.tick(30)
-        else:
-            # static display
-            clock.tick(30)
+        clock.tick(12)
 
     pygame.quit()
 
 
-# -------------------------
-# MAIN GA + visualization
-# -------------------------
+
+
 def run_genetic_and_visualize(
     population_size=50,
     mutation_prob=0.001,
@@ -326,10 +315,9 @@ def run_genetic_and_visualize(
         population.check_population()
         maxFit, bestSolution = population.evaluate()
         best_solution = bestSolution
-        print(f"Generation {population.generation:4d} | Best Fitness = {maxFit:2d}/64")
 
         if maxFit == 64:
-            print("\nSOLUTION TROUVÉE !")
+            print("\nsolution trouve")
             break
 
         if population.generation >= max_generations:
@@ -344,7 +332,7 @@ def run_genetic_and_visualize(
     print(f"Genes (extrait 20 premiers): {best_solution.chromosome.genes[:20]}")
     print()
 
-    visualize_with_pygame(best_solution, animate=animate)
+    visualize_with_pygame(best_solution, best_solution.fitness, population.generation)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,6 @@
 import random
 import pygame
 import sys
-import time
 
 class Chromosome:
     LENGTH = 63
@@ -79,7 +78,6 @@ class Knight:
             original_move = gene
             move_found = False
 
-            # try original
             self.move_forward(original_move)
             x, y = self.position
 
@@ -125,9 +123,7 @@ class Knight:
         return self.fitness
 
 
-# -------------------------
 # Population
-# -------------------------
 class Population:
     def __init__(self, population_size, mutation_prob=0.001, tournament_size=3, crossover_prob=1.0):
         self.population_size = population_size
@@ -180,14 +176,18 @@ class Population:
 
 
 
-def visualize_with_pygame(knight, fitness, generation, title="Knight's Tour - GA (green & white)", square_px=80):
+def visualize_with_pygame(knight, fitness, generation, params, title="Knight's Tour - GA", square_px=80):
+  
     pygame.init()
 
     board_px = square_px * 8
-    STATS_HEIGHT = 130
+    SIDE_PANEL_WIDTH = 300  
+    STATS_HEIGHT = 100  
+    
+    window_width = board_px + SIDE_PANEL_WIDTH
     window_height = board_px + STATS_HEIGHT
 
-    screen = pygame.display.set_mode((board_px, window_height))
+    screen = pygame.display.set_mode((window_width, window_height))
     pygame.display.set_caption(title)
 
     # Couleurs
@@ -196,9 +196,14 @@ def visualize_with_pygame(knight, fitness, generation, title="Knight's Tour - GA
     BLACK = (0, 0, 0)
     RED = (200, 30, 30)
     GREY = (210, 210, 210)
+    DARK_GREEN = (0, 100, 0)
+    LIGHT_GREY = (240, 240, 240)
+    BLUE = (50, 50, 200)
 
-    font = pygame.font.SysFont("Arial", 24)
-    big_font = pygame.font.SysFont("Arial", 32)
+    font_small = pygame.font.SysFont("Arial", 18)
+    font = pygame.font.SysFont("Arial", 22)
+    font_medium = pygame.font.SysFont("Arial", 24)
+    big_font = pygame.font.SysFont("Arial", 30)
 
     path = knight.path
     display_positions = [(x, y) for (x, y) in path if 0 <= x < 8 and 0 <= y < 8]
@@ -213,14 +218,11 @@ def visualize_with_pygame(knight, fitness, generation, title="Knight's Tour - GA
     running = True
 
     clock = pygame.time.Clock()
-
-
     speed_delay = 200 
 
     while running:
         screen.fill((230, 230, 230))
 
-        # Gestion des événements
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -228,59 +230,94 @@ def visualize_with_pygame(knight, fitness, generation, title="Knight's Tour - GA
             if event.type == pygame.MOUSEBUTTONDOWN:
                 mx, my = pygame.mouse.get_pos()
 
-                # Clique sur le bouton Pause/Play
-                if board_px - 180 <= mx <= board_px - 40 and board_px + 20 <= my <= board_px + 80:
+                if board_px + 50 <= mx <= board_px + 250 and 400 <= my <= 460:
                     paused = not paused
 
-        # Dessin du plateau
         for row in range(8):
             for col in range(8):
                 color = GREEN if (row + col) % 2 == 0 else WHITE
                 pygame.draw.rect(screen, color, (col * square_px, row * square_px, square_px, square_px))
 
-        # Animation du chemin
         if not paused and step < len(display_positions):
             step += 1
             pygame.time.delay(speed_delay)
 
-        # Dessiner le chemin
         points = []
         for i in range(step):
             x, y = display_positions[i]
             cx, cy = center_of((x, y))
             points.append((cx, cy))
 
-            # cercle + numéro
             pygame.draw.circle(screen, WHITE, (cx, cy), square_px // 4)
-            num = font.render(str(i + 1), True, BLACK)
+            num = font_small.render(str(i + 1), True, BLACK)
             screen.blit(num, num.get_rect(center=(cx, cy)))
 
         if len(points) >= 2:
             pygame.draw.lines(screen, RED, False, points, 3)
 
-        # --------------------------
-        # Zone Statistiques Graphiques
-        # --------------------------
+        pygame.draw.rect(screen, LIGHT_GREY, (board_px, 0, SIDE_PANEL_WIDTH, window_height))
+
+        panel_x = board_px + 20
+        y_offset = 30
+        
+        title_panel = big_font.render("INFORMATIONS", True, DARK_GREEN)
+        screen.blit(title_panel, (panel_x, y_offset))
+        y_offset += 50
+
+        pygame.draw.rect(screen, WHITE, (panel_x, y_offset, 260, 100), border_radius=10)
+        
+        result_title = font_medium.render("Résultats", True, BLUE)
+        screen.blit(result_title, (panel_x + 10, y_offset + 10))
+        
+        txt_fitness = font.render(f"Fitness : {fitness}/64", True, BLACK)
+        txt_gen = font.render(f"Génération : {generation}", True, BLACK)
+        
+        screen.blit(txt_fitness, (panel_x + 10, y_offset + 45))
+        screen.blit(txt_gen, (panel_x + 10, y_offset + 70))
+        
+        y_offset += 120
+
+        pygame.draw.rect(screen, WHITE, (panel_x, y_offset, 260, 220), border_radius=10)
+        
+        params_title = font_medium.render("Paramètres", True, BLUE)
+        screen.blit(params_title, (panel_x + 10, y_offset + 10))
+        
+        param_y = y_offset + 45
+        line_height = 30
+        
+        txt_pop = font_small.render(f"Population : {params['population_size']}", True, BLACK)
+        txt_mut = font_small.render(f"Mutation : {params['mutation_prob']}", True, BLACK)
+        txt_cross = font_small.render(f"Crossover : {params['crossover_prob']}", True, BLACK)
+        txt_tourn = font_small.render(f"Tournament : {params['tournament_size']}", True, BLACK)
+        txt_maxgen = font_small.render(f"Max gen. : {params['max_generations']}", True, BLACK)
+        
+        screen.blit(txt_pop, (panel_x + 15, param_y))
+        screen.blit(txt_mut, (panel_x + 15, param_y + line_height))
+        screen.blit(txt_cross, (panel_x + 15, param_y + line_height * 2))
+        screen.blit(txt_tourn, (panel_x + 15, param_y + line_height * 3))
+        screen.blit(txt_maxgen, (panel_x + 15, param_y + line_height * 4))
+        
+        y_offset += 240
+
+        btn_y = 400
+        btn_color = GREY if not paused else GREEN
+        pygame.draw.rect(screen, btn_color, (board_px + 50, btn_y, 200, 60), border_radius=15)
+        
+        label = "⏸  PAUSE" if not paused else "▶  PLAY"
+        btn_txt = font_medium.render(label, True, WHITE if not paused else BLACK)
+        btn_rect = btn_txt.get_rect(center=(board_px + 150, btn_y + 30))
+        screen.blit(btn_txt, btn_rect)
+
+        # --- ZONE DES STATS EN BAS (sous l'échiquier) ---
         pygame.draw.rect(screen, WHITE, (0, board_px, board_px, STATS_HEIGHT))
-
-
-        txt1 = font.render(f"Fitness : {fitness}/64", True, BLACK)
-        txt2 = font.render(f"Génération : {generation}", True, BLACK)
-
-        screen.blit(txt1, (20, board_px + 10))
-        screen.blit(txt2, (20, board_px + 45))
-
-        # Bouton Pause/Play
-        pygame.draw.rect(screen, GREY, (board_px - 180, board_px + 20, 140, 60))
-        label = "⏸ Pause" if not paused else "▶ Play"
-        btn_txt = big_font.render(label, True, RED)
-        screen.blit(btn_txt, (board_px - 170, board_px + 25))
+        
+        status_txt = font.render(f"Animation : {'En pause' if paused else 'En cours'}  |  Étape : {step}/{len(display_positions)}", True, BLACK)
+        screen.blit(status_txt, (20, board_px + 40))
 
         pygame.display.flip()
         clock.tick(12)
 
     pygame.quit()
-
 
 
 
@@ -299,15 +336,15 @@ def run_genetic_and_visualize(
         crossover_prob=crossover_prob
     )
 
-    print("=" * 70)
-    print("Algorithme Génétique pour le Knight's Tour")
-    print("=" * 70)
-    print(f"Population size       : {population_size}")
+    
+    print("Algorithme Génétique Knight's Tour")
+  
+    print(f"Population size  : {population_size}")
     print(f"Mutation probability  : {mutation_prob}")
     print(f"Crossover probability : {crossover_prob}")
-    print(f"Tournament size       : {tournament_size}")
-    print(f"Max generations       : {max_generations}")
-    print("=" * 70)
+    print(f"Tournament size : {tournament_size}")
+    print(f"Max generations : {max_generations}")
+    
     print()
 
     best_solution = None
@@ -328,11 +365,19 @@ def run_genetic_and_visualize(
 
     print()
     print(f"Fitness finale: {best_solution.fitness}/64")
-    print(f"Longueur du path: {len(best_solution.path)}")
-    print(f"Genes (extrait 20 premiers): {best_solution.chromosome.genes[:20]}")
+    print(f"Longueur path: {len(best_solution.path)}")
+    print(f"Genes (20 premiers): {best_solution.chromosome.genes[:20]}")
     print()
 
-    visualize_with_pygame(best_solution, best_solution.fitness, population.generation)
+    params = {
+        'population_size': population_size,
+        'mutation_prob': mutation_prob,
+        'crossover_prob': crossover_prob,
+        'tournament_size': tournament_size,
+        'max_generations': max_generations
+     }
+
+    visualize_with_pygame(best_solution, best_solution.fitness, population.generation,params)
 
 
 if __name__ == "__main__":
@@ -344,3 +389,4 @@ if __name__ == "__main__":
         max_generations=1000,
         animate=True
     )
+
